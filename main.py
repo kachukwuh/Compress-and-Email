@@ -1,6 +1,7 @@
 from PIL import Image, UnidentifiedImageError
 
 import os
+import re
 from tkinter.filedialog import askopenfilename, askdirectory, askopenfilenames
 
 
@@ -23,12 +24,15 @@ def compress(file_path):
 
         if type(file_path) is str:
             with Image.open(file_path) as im:
-                image = file_path.split('.')[0]
-                file_format = file_path.split('.')[1]
+                image_file: str = re.split(r"/|\\", file_path)[-1]
+                file_format: str = image_file.split('.')[1]
+                file_name: str = image_file.split('.')[0]
 
-                output_file: str = f"{image}_compressed.{file_format}"
+                new_file_name: str = f"{file_name}_compressed.{file_format}"
 
-                im.save(output_file, optimize=True, quality=int(quality))
+                output_file: str = file_path.replace(image_file, new_file_name)
+
+                im.save(output_file, quality=int(quality))
 
         return "list"
 
