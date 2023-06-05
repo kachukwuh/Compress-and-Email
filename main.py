@@ -4,7 +4,7 @@ from PIL import Image, UnidentifiedImageError
 from email.message import EmailMessage
 import mimetypes
 import os
-import re
+from pathlib import Path
 import shutil
 import smtplib
 from tkinter.filedialog import askopenfilename, askdirectory, askopenfilenames
@@ -14,34 +14,47 @@ load_dotenv()
 
 
 def send_email(data):
+    while True:
+        user_input: str = input("Press '1' to send file to an email address or '2' to exit\n>>> ")
+        if user_input == '1':
+            receiver_email = input("Please enter email address\n>>> ")
+            break
+        if user_input == '2':
+            return "Thank You, Goodbye"
 
-    attachment: str = data[0]
-    receiver_email: str = data[1]
-    file_name: str = data[2]
+    path = Path(data)
 
-    if receiver_email == "":
-        print("Thank You, Goodbye")
-    else:
+    EMAIL_ADDRESS: str = os.getenv("EMAIL_ADDRESS")
+    EMAIL_PASSWORD: str = os.getenv("EMAIL_PASSWORD")
 
-        EMAIL_ADDRESS: str = os.getenv("EMAIL_ADDRESS")
-        EMAIL_PASSWORD: str = os.getenv("EMAIL_PASSWORD")
+    message = EmailMessage()
+    message["Subject"] = "With Love From Kach"
+    message["From"] = EMAIL_ADDRESS
+    message["To"] = receiver_email
+    message.set_content("Please find attached your compressed photo")
 
-        message = EmailMessage()
-        message["Subject"] = "With Love From Kach"
-        message["From"] = EMAIL_ADDRESS
-        message["To"] = receiver_email
-        message.set_content("Please find attached your compressed photo")
-
-        maintype, _, subtype = (mimetypes.guess_type(file_name)[0] or 'application/octet-stream').partition("/")
-
-        with open(attachment, 'rb') as file:
+    if Path.is_file(data):
+        with open(data, "rb") as file:
             file_data = file.read()
+            file_name = path.name
+    else:
+        compressed_directory = path.parent / "Compressed_Photos"
+        shutil.make_archive(str(compressed_directory), 'zip', data)
 
-        message.add_attachment(file_data, maintype=maintype, subtype=subtype, filename=file_name)
+        with open(f"{compressed_directory}.zip", "rb") as file:
+            file_data = file.read()
+            file_name = "Compressed_Photos.zip"
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            smtp.send_message(message)
+    mime_type, encoding = mimetypes.guess_type(file_name)
+    if mime_type:
+        # Split the MIME type into main type and subtype
+        main_type, sub_type = mime_type.split('/', 1)
+
+        message.add_attachment(file_data, maintype=main_type, subtype=sub_type, filename=file_name)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        smtp.send_message(message)
 
 
 def is_valid_image(file: str):
@@ -53,63 +66,55 @@ def is_valid_image(file: str):
 
 
 def compress(file_path):
-    output_file: str = ""
-    user_email: str = ""
-    new_file_name: str = ""
 
     while True:
-
         quality: str = input("Specify quality (1 - 100)\n>>> ")
         if quality.isdigit() and int(quality) in range(1, 101):
-            pass
+            break
         else:
             continue
 
-        if type(file_path) is str:
-            with Image.open(file_path) as im:
-                image_file: str = re.split(r"/|\\", file_path)[-1]
-                file_format: str = image_file.split('.')[1]
-                file_name: str = image_file.split('.')[0]
+    if type(file_path) is str:
+        with Image.open(file_path) as im:
 
-                new_file_name = f"{file_name}_compressed.{file_format}"
-                output_file = file_path.replace(image_file, new_file_name)
+            path = Path(file_path)  # Create path object with picture path
 
-                im.save(output_file, quality=int(quality))
-                print("Success: File compressed and saved locally")
+            file_format: str = path.suffix  # .JPG
+            file_name: str = path.stem  # IMG_1053
 
-        else:
-            for path in file_path:
-                with Image.open(path) as im:
-                    image_file: str = re.split(r"/|\\", path)[-1]
-                    file_format: str = image_file.split('.')[1]
-                    file_name: str = image_file.split('.')[0]
+            new_file_name = f"{file_name}_compressed{file_format}"
+            output_file = path.parent / new_file_name
 
-                    new_file_name: str = f"{file_name}_compressed.{file_format}"
+            im.save(output_file, quality=int(quality))
+            print("Success: File compressed and saved locally")
 
-                    slash_sign = path[-len(image_file) - 1]
-                    parent_directory = path.removesuffix(image_file)
-                    new_directory = os.path.join(parent_directory, "Compressed" + slash_sign)
+            return output_file
 
-                    output_file: str = new_directory + new_file_name
+    else:
+        for item in file_path:
+            with Image.open(item) as im:
 
-                    if os.path.isdir(new_directory):
-                        im.save(output_file, quality=int(quality))
-                    else:
-                        os.mkdir(new_directory)
-                        im.save(output_file, quality=int(quality))
+                path = Path(item)
 
-            print("Success: Files compressed and saved locally")
+                file_format: str = path.suffix
+                file_name: str = path.stem
 
-        while True:
-            user_input: str = input("Press '1' to send file to an email address or '2' to exit\n>>> ")
-            if user_input == '1':
-                user_email = input("Please enter email address\n>>> ")
-                shutil.make_archive()
-                break
-            if user_input == '2':
-                break
+                new_file_name: str = f"{file_name}_compressed{file_format}"
 
-        return output_file, user_email, new_file_name
+                parent_directory = path.parent
+                new_directory = parent_directory / "Compressed"
+
+                output_file = new_directory / new_file_name
+
+                if Path.is_dir(new_directory):
+                    im.save(output_file, quality=int(quality))
+                else:
+                    Path.mkdir(new_directory)
+                    im.save(output_file, quality=int(quality))
+
+        print("Success: Files compressed and saved locally")
+
+        return new_directory
 
 
 def get_path(choice: str):
